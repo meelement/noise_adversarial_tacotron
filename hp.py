@@ -5,14 +5,14 @@ from os import makedirs
 
 # CONFIG
 
-model_id = "noise_adversarial"
+model_id = "baseline"
 
 ## Audio Signal Processing
 
 sampling_rate = 16000
 n_fft = 2048
 fft_bins = n_fft // 2 + 1
-n_mels = 128
+n_mels = 80
 hop_length = int(sampling_rate * 12.5 // 1000)
 win_length = int(sampling_rate * 60 // 1000) # 25 ~ 128
 min_f = 40
@@ -20,9 +20,8 @@ max_f = 8000
 
 ## Dataset
 
-wav_path = Path(expanduser("~/datasets/vctk/wav16/"))
-text_path = Path(expanduser("~/datasets/vctk/txt16/"))
-noise_path = Path(expanduser("~/datasets/chime/backgrounds/"))
+wav_path = Path(expanduser("~/datasets/ljspeech/waves_16000/"))
+text_path = Path(expanduser("~/datasets/ljspeech/metadata.csv"))
 
 n_loading_threads = 4
 n_blocking_threads = 1
@@ -72,8 +71,4 @@ plot_interval = 200
 ### Binning Loading
 q_size = 240
 redundancy = 6
-load_weight_path = checkpoint_path / "warm.pt"
-
-
-if __name__ == '__main__':
-    pass
+load_weight_path = checkpoint_path / "checkpoint.pt"

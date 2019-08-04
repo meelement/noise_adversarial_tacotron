@@ -11,49 +11,40 @@ from utils.text import text_to_sequence
 from random import randint
 
 
-class MetaLoader:
-    def __init__(self, wave_path: Path, txt_path: Path):
-        wave_path = wave_path.glob("*.wav")
-        txt_path = txt_path.glob("*.txt")
-        id_wave_path = self.id_wave_path = {}
-        id_txt_path = self.id_txt_path = {}
+class TextWaveLoader:
+    def __init__(self, wave_path, txt_path):
+        wave_path = list(wave_path.glob("*.wav"))
+        self.id_text = id_text = {}
+        self.ids = ids = []
+        self.id_wave_path = id_wave_path = {}
+        with open(str(txt_path), 'r') as f:
+            for line in f:
+                l = line.strip().split('|')
+                id_text[l[0]] = l[2]
+
         for file in wave_path:
-            id_wave_path[file.stem] = file
+            id_wave_path[file.stem] = str(file)
+            if file.stem in id_text:
+                ids.append(file.stem)
 
-        for file in txt_path:
-            id_txt_path[file.stem] = file
-
-        ids = self.ids = []
-        for id in id_wave_path.keys():
-            if id in id_txt_path:
-                ids.append(id)
+        print("Found LJSpeech Wave ", len(self))
 
     def __len__(self):
         return len(self.ids)
-
-    def __getitem__(self, item: int):
-        return self.id_txt_path[self.ids[item]], self.id_wave_path[self.ids[item]]
-
-
-class TextWaveLoader(MetaLoader):
-    def __init__(self, wave_path, txt_path):
-        super(TextWaveLoader, self).__init__(wave_path, txt_path)
 
     def __getitem__(self, item:int):
         """
         :param item: int of index
         :return: "hello, world.", WAVE Torch CPU Float
         """
-        txt_path, wave_path = super(TextWaveLoader, self).__getitem__(item)
-        text = wave = None
-        with open(str(txt_path), 'r') as f:
-            text = f.read().strip()
+        id = self.ids[item]
+        text = self.id_text[id]
+        wave_path = self.id_wave_path[id]
         wave = load_to_torch(wave_path, hp.sampling_rate)
         return text.strip(), wave
 
 
-class BinnedBatchLoader(TextWaveLoader):
-    # TODO : Ensure that this loader sends everything to GPU async.
+class BinnedBatchLoader:
     def __init__(
             self,
             wave_path,
@@ -64,7 +55,7 @@ class BinnedBatchLoader(TextWaveLoader):
             redundancy=5,
             device="cuda:0"
     ):
-        super(BinnedBatchLoader, self).__init__(wave_path, txt_path)
+        self.loader = TextWaveLoader(wave_path, txt_path)
         self.stft = stft
         # Loading From File System
         self.loading_threads = []
@@ -96,8 +87,8 @@ class BinnedBatchLoader(TextWaveLoader):
     def loading_thread(self):
         while True:
             try:
-                id = randint(0, len(self) - 1)
-                text, wave = self[id]
+                id = randint(0, len(self.loader) - 1)
+                text, wave = self.loader[id]
                 phoneme = text_to_sequence(text, hp.cleaner_names)
                 phoneme = torch.from_numpy(np.int64(phoneme))
                 self.loading_queue.put((phoneme.to(self.device, non_blocking=True), wave.to(self.device, non_blocking=True)))
@@ -158,3 +149,7 @@ class BinnedBatchLoader(TextWaveLoader):
         WaveLength = torch.LongTensor(norm_sample_lengths)
         FrameLength = torch.LongTensor(norm_frame_lengths)
         return Phone, Wave, PhoneLength, WaveLength, FrameLength
+
+    def __len__(self):
+        return len(self.loader)
+

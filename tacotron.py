@@ -221,7 +221,7 @@ class LSA(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, n_mels, decoder_dims, lstm_dims):
         super().__init__()
-        self.max_r = 5
+        self.max_r = 10
         self.r = None
         self.n_mels = n_mels
         self.prenet = PreNet(n_mels)
@@ -338,7 +338,6 @@ class Tacotron(nn.Module):
         Predicted Linear [Batch, NFFT, (Time + r - 1) // r * r]
         Attention [Batch, (Time + r - 1) // r, Text]
         """
-        # TODO : Replace the setting of state to using model.train() and model.eval()
         device = next(self.parameters()).device  # use same device as parameters
 
         self.step += 1

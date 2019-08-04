@@ -6,7 +6,7 @@ from audio.spec.mel import MelSTFT
 import hp
 from utils.text.symbols import symbols
 from tacotron import Tacotron
-from dataset.vctk import BinnedBatchLoader
+from dataset import DataLoader
 
 
 def np_now(x): return x.detach().cpu().numpy()
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         mel_fmin=hp.min_f,
         mel_fmax=hp.max_f
     ).to(device=hp.device)
-    train_set = BinnedBatchLoader(
+    train_set = DataLoader(
         wave_path=hp.wav_path,
         txt_path=hp.text_path,
         q_size=hp.q_size,
