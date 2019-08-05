@@ -145,11 +145,10 @@ class BinnedBatchLoader:
         norm_wave = [a[:l] for a, l in zip(wave, norm_sample_lengths)]
         Wave = pad_sequence(norm_wave, batch_first=True)
         Phone = pad_sequence(phone, batch_first=True)
-        PhoneLength = torch.LongTensor(phone_lengths)
-        WaveLength = torch.LongTensor(norm_sample_lengths)
-        FrameLength = torch.LongTensor(norm_frame_lengths)
+        PhoneLength = torch.LongTensor(phone_lengths).to(self.device)
+        WaveLength = torch.LongTensor(norm_sample_lengths).to(self.device)
+        FrameLength = torch.LongTensor(norm_frame_lengths).to(self.device)
         return Phone, Wave, PhoneLength, WaveLength, FrameLength
 
     def __len__(self):
         return len(self.loader)
-

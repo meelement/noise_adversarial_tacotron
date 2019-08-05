@@ -21,13 +21,15 @@ def train_loop(stft, model, optimizer, train_set, lr, train_steps):
     for i in range(1, train_steps + 1):
         Phone, Wave, PhoneLength, WaveLength, FrameLength = train_set.get_batch()
         optimizer.zero_grad()
-        # TODO : Train a baseline model first
         Mel, Linear = stft.transform(Wave)
-        Melest, Linearest, AttentionWeight = model(Phone, Mel)
+        Melest, Linearest, AttentionWeight = model(Phone, Mel, PhoneLength)
 
         mel_loss = F.l1_loss(Melest, Mel)
         linear_loss = F.l1_loss(Linearest, Linear)
         loss = mel_loss + linear_loss
+        #
+
+
         # Decay Loss
         if avg_loss:
             avg_loss = avg_loss * hp.decay + loss.item() * (1 - hp.decay)

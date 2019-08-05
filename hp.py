@@ -20,11 +20,10 @@ max_f = 8000
 
 ## Dataset
 
-wav_path = Path(expanduser("~/datasets/ljspeech/waves_16000/"))
+wav_path = Path(expanduser("~/datasets/ljspeech/wavs_16000/"))
 text_path = Path(expanduser("~/datasets/ljspeech/metadata.csv"))
 
 n_loading_threads = 4
-n_blocking_threads = 1
 ## Logging Paths
 
 decay = 0.99
@@ -57,17 +56,16 @@ device = "cuda"
 
 ### Make sure that they are multiples of 16
 schedule = [
-    (7,  1e-3,  10_000,  32),   # progressive training schedule
-    (5,  1e-4, 100_000,  32),   # (r, lr, step, batch_size)
-    (2,  1e-4, 180_000,  16)
+    (7,  0.005,  5000,  32),   # progressive training schedule
+    (5,  0.002, 50000,  32),   # (r, lr, step, batch_size)
+    (3,  0.0005, 180000,  16)
 ]
-
 
 max_frame_len = None            # if you have a couple of extremely long spectrograms you might want to use this
 bin_lengths = True              # bins the spectrogram lengths before sampling in data loader - speeds up training
 clip_grad_norm = 1.0            # clips the gradient norm to prevent explosion - set to None if not needed
 checkpoint_interval = 2000        # checkpoints the model every X steps
-plot_interval = 200
+plot_interval = 10
 ### Binning Loading
 q_size = 240
 redundancy = 6

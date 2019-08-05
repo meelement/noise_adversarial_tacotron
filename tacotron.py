@@ -3,8 +3,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from audio.spec.stft import STFT
-from audio.spec.mel import MelSTFT
 
 
 class HighwayNetwork(nn.Module):
@@ -184,26 +182,34 @@ class LSA(nn.Module):
         self.v = nn.Linear(attn_dim, 1, bias=False)
         self.cumulative = None
         self.attention = None
+        self.alpha = None
+        self.attention_mask = None
+        self.device = None
 
-    def init_attention(self, encoder_seq_proj):
-        device = next(self.parameters()).device  # use same device as parameters
+    def init_attention(self, encoder_seq_proj, text_len):
+        self.device = device = next(self.parameters()).device  # use same device as parameters
         Batch, Text, Attention = encoder_seq_proj.size()
         self.cumulative = torch.zeros(Batch, Text, device=device)
         self.attention = torch.zeros(Batch, Text, device=device)
+        self.alpha = torch.zeros(Batch, Text, device=device)
+        self.alpha[:, 0: 2] = 0.5
+        self.attention_mask = torch.arange(Text, device=self.device)[None, :] < text_len[:, None]
+        self.attention_mask = self.attention_mask.float()
 
-    def forward(self, encoder_seq_proj, query, t):
+    def forward(self, encoder_seq_proj, query, t, text_len, enable_forward_bias=True):
         """
         Location sensitive attention
         :param encoder_seq_proj: [Batch, Text, Attention]
         :param query: [Batch, Attention]
         :param t: int
+        :param text_len: Long [Batch, Attention]
         :return: [Batch, 1, Text]
         """
-        if t == 0: self.init_attention(encoder_seq_proj)
+        if t == 0: self.init_attention(encoder_seq_proj, text_len)
 
         processed_query = self.W(query).unsqueeze(1) # [Batch, 1, Attention]
 
-        location = torch.cat([self.cumulative.unsqueeze(1), self.attention.unsqueeze(1)], dim=1) # [Batch, 2, Text]
+        location = torch.stack([self.cumulative, self.attention], dim=1) # [Batch, 2, Text]
         processed_loc = self.L(self.conv(location).transpose(1, 2)) # Convolution along Attention. [Batch, Text, Attention]
 
         u = self.v(torch.tanh(processed_query + encoder_seq_proj + processed_loc)) # [Batch, Text, 1]
@@ -212,10 +218,17 @@ class LSA(nn.Module):
         # Smooth Attention
         scores = torch.sigmoid(u) / torch.sigmoid(u).sum(dim=1, keepdim=True) # [Batch, Text]
         # scores = F.softmax(u, dim=1)
-        self.attention = scores
+        self.attention = scores * self.attention_mask
         self.cumulative += self.attention
-
-        return scores.unsqueeze(-1).transpose(1, 2) # [Batch, 1, Text]
+        # Introducing Forward Bias
+        if enable_forward_bias:
+            shift_alpha = F.pad(self.alpha[:, :-1], [1, 0, 0, 0], value=0.0)
+            dual_alpha = F.pad(self.alpha[:, :-2], [2, 0, 0, 0], value=0.0)
+            self.alpha = (shift_alpha + dual_alpha + self.alpha  + 1e-7) * self.attention
+            self.alpha = self.alpha / torch.sum(self.alpha, dim=-1, keepdim=True)
+            return self.alpha.unsqueeze(-1).transpose(1, 2) # [Batch, 1, Text]
+        else:
+            return self.attention.unsqueeze(-1).transpose(1, 2) # [Batch, 1, Text]
 
 
 class Decoder(nn.Module):
@@ -236,10 +249,10 @@ class Decoder(nn.Module):
         device = prev.device
         assert prev.device == current.device
         mask = torch.zeros(prev.size(), device=device).bernoulli_(p)
-        return prev * mask + current * (1 - mask)
+        return prev * mask + current * (1.0 - mask)
 
     def forward(self, encoder_seq, encoder_seq_proj, prenet_in,
-                hidden_states, cell_states, context_vec, t):
+                hidden_states, cell_states, context_vec, t, text_len):
         """
         :param encoder_seq: [Batch, Text, 2 x Encoder]
         :param encoder_seq_proj: [Batch, Text, Attention]
@@ -248,6 +261,7 @@ class Decoder(nn.Module):
         :param cell_states: ([Batch, LSTM], [Batch, LSTM])
         :param context_vec: [Batch, Context]
         :param t: int
+        :param text_len: the length of phone [Batch] LongTensor
         :return: (mels, scores, hidden_states, cell_states, context_vec)
         """
         # Need this for reshaping mels
@@ -265,7 +279,7 @@ class Decoder(nn.Module):
         attn_hidden = self.attn_rnn(attn_rnn_in.squeeze(1), attn_hidden) # [Batch, Decoder]
 
         # Compute the attention scores
-        scores = self.attn_net(encoder_seq_proj, attn_hidden, t) # [Batch, 1, Text]
+        scores = self.attn_net(encoder_seq_proj, attn_hidden, t, text_len) # [Batch, 1, Text]
 
         # Dot product to create the context vector
         context_vec = scores @ encoder_seq # [Batch, 1, Context]
@@ -317,8 +331,6 @@ class Tacotron(nn.Module):
         self.init_model()
         self.num_params()
 
-        # Unfortunately I have to put these settings into params in order to save
-        # if anyone knows a better way of doing this please open an issue in the repo
         self.step = nn.Parameter(torch.zeros(1).long(), requires_grad=False)
         self.r = nn.Parameter(torch.tensor(0).long(), requires_grad=False)
 
@@ -329,10 +341,11 @@ class Tacotron(nn.Module):
     def get_r(self):
         return self.r.item()
 
-    def forward(self, x, m):
+    def forward(self, phone, mel, text_len):
         """
-        :param x: Long[Batch, Text]
-        :param m: [Batch, NMel, Time]
+        :param phone: Long[Batch, Text]
+        :param mel: [Batch, NMel, Time]
+        :param text_len: [Batch] LongTensor
         :return:
         Predicted Mel [Batch, NMel, (Time + r - 1) // r * r]
         Predicted Linear [Batch, NFFT, (Time + r - 1) // r * r]
@@ -342,7 +355,7 @@ class Tacotron(nn.Module):
 
         self.step += 1
 
-        batch_size, _, steps = m.size()
+        batch_size, _, steps = mel.size()
 
         # Initialise all hidden states and pack into tuple
         attn_hidden = torch.zeros(batch_size, self.decoder_dims, device=device)
@@ -363,7 +376,7 @@ class Tacotron(nn.Module):
 
         # Project the encoder outputs to avoid
         # unnecessary matmuls in the decoder loop
-        encoder_seq = self.encoder(x)
+        encoder_seq = self.encoder(phone)
         encoder_seq_proj = self.encoder_proj(encoder_seq)
 
         # Need a couple of lists for outputs
@@ -371,10 +384,10 @@ class Tacotron(nn.Module):
 
         # Run the decoder loop
         for t in range(0, steps, self.r):
-            prenet_in = m[:, :, t - 1] if t > 0 else go_frame
+            prenet_in = mel[:, :, t - 1] if t > 0 else go_frame
             mel_frames, scores, hidden_states, cell_states, context_vec = \
                 self.decoder(encoder_seq, encoder_seq_proj, prenet_in,
-                             hidden_states, cell_states, context_vec, t)
+                             hidden_states, cell_states, context_vec, t, text_len)
             mel_outputs.append(mel_frames)
             attn_scores.append(scores)
 
@@ -392,7 +405,7 @@ class Tacotron(nn.Module):
 
         return mel_outputs, linear_outputs, attn_scores
 
-    def generate(self, x, steps=2000):
+    def generate(self, phone, steps=2000):
         device = next(self.parameters()).device  # use same device as parameters
 
         self.encoder.eval()
@@ -400,7 +413,8 @@ class Tacotron(nn.Module):
         self.decoder.generating = True
 
         batch_size = 1
-        x = torch.as_tensor(x, dtype=torch.long, device=device).unsqueeze(0)
+        phone = torch.as_tensor(phone, dtype=torch.long, device=device).unsqueeze(0)
+        text_len = torch.as_tensor([phone.size(1)], dtype=torch.long)
 
         # Need to initialise all hidden states and pack into tuple for tidyness
         attn_hidden = torch.zeros(batch_size, self.decoder_dims, device=device)
@@ -421,7 +435,7 @@ class Tacotron(nn.Module):
 
         # Project the encoder outputs to avoid
         # unnecessary matmuls in the decoder loop
-        encoder_seq = self.encoder(x)
+        encoder_seq = self.encoder(phone)
         encoder_seq_proj = self.encoder_proj(encoder_seq)
 
         # Need a couple of lists for outputs
@@ -432,11 +446,11 @@ class Tacotron(nn.Module):
             prenet_in = mel_outputs[-1][:, :, -1] if t > 0 else go_frame
             mel_frames, scores, hidden_states, cell_states, context_vec = \
                 self.decoder(encoder_seq, encoder_seq_proj, prenet_in,
-                             hidden_states, cell_states, context_vec, t)
+                             hidden_states, cell_states, context_vec, t, text_len)
             mel_outputs.append(mel_frames)
             attn_scores.append(scores)
             # Stop the loop if silent frames present
-            if (mel_frames < -3.8).all() and t > 10: break
+            if (scores[:, -1] > 0.9).all() and t > 10: break
 
         # Concat the mel outputs into sequence
         mel_outputs = torch.cat(mel_outputs, dim=2)
@@ -445,8 +459,8 @@ class Tacotron(nn.Module):
         postnet_out = self.postnet(mel_outputs)
         linear_outputs = self.post_proj(postnet_out)
 
-        linear_outputs = linear_outputs.transpose(1, 2)[0].cpu().data.numpy()
-        mel_outputs = mel_outputs[0].cpu().data.numpy()
+        linear_outputs = linear_outputs.transpose(1, 2)
+        mel_outputs = mel_outputs
 
         # For easy visualisation
         attn_scores = torch.cat(attn_scores, 1)

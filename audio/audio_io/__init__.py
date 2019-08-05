@@ -4,7 +4,6 @@ import librosa.filters
 import numpy as np
 import scipy
 import struct
-from pyaudio import PyAudio, paInt16
 
 
 def load_wav(path, sample_rate):
