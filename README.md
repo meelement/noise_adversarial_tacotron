@@ -14,7 +14,10 @@ This repository contains a reproduction of the following paper, which applied do
 
 ## Quick Start
 
-- You need to either roughly cut VCTK or ASR align then cut it since the forward attention fall into local minimum and does not optimize when there are varied length long silence at the beginning of many training examples. This can be roughly done by removing silence by threshold.
+- You need to have some noise dataset, like CHiME-4 background dataset.
+- You need to have some TTS dataset, with hunderds of speakers.
+  - If you are using VCTK, you need to either roughly cut VCTK or ASR align then cut it since the forward attention fall into local minimum and does not optimize when there are varied length long silence at the beginning of many training examples. This can be roughly done by removing silence by threshold.
+  - I haven't tried with LibreSpeech, it should work.
 - No preprocessing is required since we adopt Nvidia's code and do all feature extracion and data augmentation live on GPU. 
 - Change the dataset configuration in `./hp.py` and all that in `./dataset/`. Following the same API design or rewrite the loader completely. This implementation uses a customized loader with two CPU pipelines and multi-theading. 
 
