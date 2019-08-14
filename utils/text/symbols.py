@@ -15,7 +15,8 @@ _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 _arpabet = ['@' + s for s in cmudict.valid_symbols]
 
 # Special markers for the begin and end of a sample
-# _beg_end = ["BEGIN", "END"]
+_beg_end = ["BEGIN", "END"]
 
 # Export all symbols:
-symbols = [_pad] + list(_special) + list(_punctuation) + list(_letters) + _arpabet
+symbols = [_pad] + list(_special) + list(_punctuation) + list(_letters) + _arpabet + _beg_end
+

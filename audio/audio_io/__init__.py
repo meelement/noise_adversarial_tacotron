@@ -3,7 +3,6 @@ import torch
 import librosa.filters
 import numpy as np
 import scipy
-import struct
 
 
 def load_wav(path, sample_rate):

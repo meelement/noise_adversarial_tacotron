@@ -79,20 +79,25 @@ def time_since(started):
         return f'{m}m {s}s'
 
 
+def save_imshow(arr, path, figsize):
+    fig = plt.figure(figsize=figsize)
+    plt.imshow(arr, interpolation="nearest", aspect='auto')
+    plt.colorbar()
+    fig.savefig(f'{path}.png', bbox_inches='tight')
+    plt.close(fig)
+
+
 def save_attention(attn, path):
-    fig = plt.figure(figsize=(12, 6))
-    plt.imshow(attn.T, interpolation='nearest', aspect='auto')
-    fig.savefig(f'{path}.png', bbox_inches='tight')
-    plt.close(fig)
+    save_imshow(attn.T, path, figsize=(10, 6))
 
 
-def save_spectrogram(M, path, length=None):
-    M = np.flip(M, axis=0)
-    if length: M = M[:, :length]
-    fig = plt.figure(figsize=(12, 6))
-    plt.imshow(M, interpolation='nearest', aspect='auto')
-    fig.savefig(f'{path}.png', bbox_inches='tight')
-    plt.close(fig)
+def save_spectrogram(arr, path, length=None):
+    arr = np.flip(arr, axis=0)
+    if length: arr = arr[:, :length]
+    save_imshow(arr, path, (12, 6))
+
+
+
 
 
 def plot(array): 
