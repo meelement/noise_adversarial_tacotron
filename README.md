@@ -6,6 +6,13 @@ This repository contains a reproduction of the following paper, which applied do
 
 *Disentangling Correlated Speaker and Noise for Speech Synthesis via Data Augmentation and Adversarial Factorization* by Wei-Ning Hsu et al.
 
+## Requirements
+
+- Python 3.6 +
+- Pytorch 1.0 +
+- tsne-cuda
+- Matplotlib
+
 ## TODOs
 
 - The paper only experimented with additive noises, try to add a simple room simulator on it and verify the performance with convolutional noise. We need room impulse response to create such augmentation. 
@@ -23,7 +30,7 @@ This repository contains a reproduction of the following paper, which applied do
 
 ## Results
 
-Currently the performance is slightly inferer than the demonstration released by the authors.
+Currently the performance is inferior than the demonstration released by the authors.
 
 We trained on LJSpeech + VCTK instead of VCTK alone, and grapheme rather than phoneme is used to train the model. 
 
